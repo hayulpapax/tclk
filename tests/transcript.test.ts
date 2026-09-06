@@ -299,6 +299,31 @@ describe("checkNonceOrder", () => {
     expect(checkNonceOrder([payerRow, payeeRow])).toEqual([]);
   });
 
+  // The limit, asserted rather than described. @alitiknazoglu established on #110 that
+  // the condition is not "shares a signer": a swap surfaces only when the moved record
+  // is followed in the supplied order by a record from the same signer with a lower
+  // nonce. A signer's final record has nothing after it to bracket against, so
+  // substituting that one is invisible here — and a supplier holding spares from both
+  // parties picks exactly that one. Locking it down so the claim cannot quietly widen.
+  it("is silent when the substituted record is that signer's last, and speaks when it is not", () => {
+    const { accept } = deal();
+    const room = dealRoom(accept.contract);
+    const payeeRow = record(room, 1, NOW + 1, payee, encodeFrame(heartbeat(accept.contract, "aa11bb22cc33dd44")));
+    const payerRow = record(room, 2, NOW + 2, payer, encodeFrame({
+      type: "refund", from: payer.did, contract: accept.contract,
+    }));
+    const payeeSpare = record(room, 8, NOW + 8, payee, encodeFrame(heartbeat(accept.contract, "dd44ee55ff66aa77")));
+    const payerSpare = record(room, 9, NOW + 9, payer, encodeFrame(heartbeat(accept.contract, "ee55ff66aa77bb88")));
+
+    // The payee's spare is written last for that signer, so nothing of the payee's
+    // follows it once it is dropped in: no bracket, no violation.
+    expect(checkNonceOrder([payeeRow, payeeSpare, payerRow])).toEqual([]);
+
+    // The payer's spare is bracketed by the payer's own earlier refund, which follows
+    // it in the supplied order carrying a lower nonce.
+    expect(checkNonceOrder([payeeRow, payerSpare, payerRow])).toHaveLength(1);
+  });
+
   it("ignores a record whose signature does not verify, since its nonce is asserted only", () => {
     const { accept } = deal();
     const room = dealRoom(accept.contract);

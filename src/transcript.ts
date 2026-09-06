@@ -253,8 +253,18 @@ export interface NonceOrderIssue {
  * parties give two attested chains and no attested interleaving between them, so this
  * says nothing about the order of a payer's record relative to a payee's.
  *
- * What it does not catch: deletion of a record, truncation of the last one, and
- * reordering across signers. Nothing in an export catches the first two.
+ * What it catches is reordering, including reordering hidden by renumbering `seq`.
+ * What it does not catch: deletion of a record, truncation of the last one,
+ * reordering across signers, and substituting one of a signer's records for another
+ * of that signer's.
+ *
+ * The last of those is worth stating precisely, because "shares a signer" is not the
+ * condition. A swap shows up only when the moved record is *followed in the supplied
+ * order* by a record from the same signer carrying a lower nonce. Substituting a
+ * signer's final record leaves nothing to bracket it, and the walk stays silent — so
+ * a supplier holding spare frames from both parties simply uses the one whose signer
+ * has no later row. That is a choice available to the supplier, not a gap this rule
+ * can be widened to close.
  *
  * Only authenticated records are considered — an unverified record's nonce is asserted,
  * not attested, so it carries no ordering claim.
