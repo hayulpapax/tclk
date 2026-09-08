@@ -270,6 +270,23 @@ describe("checkNonceOrder", () => {
     ]);
   });
 
+  it("counts one violation, not two, when a signer's records go 5, 3, 4", () => {
+    // The comparison is against the immediate predecessor, so a single displaced record
+    // is a single row. Comparing against a running maximum instead reported 5>3 and then
+    // 5>4 — the same reordering twice, the second naming a predecessor already walked
+    // past — and 3 -> 4 does not go backwards at all. luch91 raised this on #110.
+    const { accept } = deal();
+    const room = dealRoom(accept.contract);
+    const five  = record(room, 5, NOW + 5, payee, encodeFrame(heartbeat(accept.contract, "aa11bb22cc33dd44")));
+    const three = record(room, 3, NOW + 3, payee, encodeFrame(heartbeat(accept.contract, "bb22cc33dd44ee55")));
+    const four  = record(room, 4, NOW + 4, payee, encodeFrame(heartbeat(accept.contract, "cc33dd44ee55ff66")));
+
+    expect([five, three, four].map((r) => r.nonce)).toEqual(["10005", "10003", "10004"]);
+    expect(checkNonceOrder([five, three, four])).toMatchObject([
+      { room, sender: payee.did, index: 1, previousIndex: 0, nonce: "10003", previousNonce: "10005" },
+    ]);
+  });
+
   it("still catches the swap when the supplier renumbers seq and ts to hide it", () => {
     const { accept } = deal();
     const room = dealRoom(accept.contract);

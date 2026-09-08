@@ -276,7 +276,14 @@ export interface NonceOrderIssue {
  * — a handful of records from two keys — is never near that boundary.
  */
 export function checkNonceOrder(records: readonly TranscriptRecord[]): NonceOrderIssue[] {
-  const highest = new Map<string, { value: bigint; index: number; nonce: string }>();
+  // Against that signer's *immediately preceding* record, not the highest nonce seen
+  // from them. The rule above is stated that way — a swap shows when the moved record is
+  // followed in supplied order by a lower nonce — and the two readings disagree: with a
+  // running maximum, nonces 5, 3, 4 report both 5>3 and 5>4, when only the first steps
+  // backwards and 3 -> 4 rises. One reordering counted twice, the second row naming a
+  // predecessor the walk had already passed. The old name "highest" is what made the
+  // early return below look right.
+  const previousBySigner = new Map<string, { value: bigint; index: number; nonce: string }>();
   const issues: NonceOrderIssue[] = [];
 
   records.forEach((record, index) => {
@@ -290,8 +297,8 @@ export function checkNonceOrder(records: readonly TranscriptRecord[]): NonceOrde
       return;
     }
 
-    const key = `${record.room} ${record.sender}`;
-    const previous = highest.get(key);
+    const key = `${record.room} ${record.sender}`;
+    const previous = previousBySigner.get(key);
     if (previous !== undefined && value <= previous.value) {
       issues.push({
         room: record.room,
@@ -301,9 +308,10 @@ export function checkNonceOrder(records: readonly TranscriptRecord[]): NonceOrde
         nonce: record.nonce,
         previousNonce: previous.nonce,
       });
-      return;
     }
-    highest.set(key, { value, index, nonce: record.nonce });
+    // Advance even when this record was just reported: it is the predecessor of whatever
+    // this signer supplies next, and not advancing is what produced the duplicate row.
+    previousBySigner.set(key, { value, index, nonce: record.nonce });
   });
 
   return issues;
